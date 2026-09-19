@@ -86,6 +86,23 @@
   .applybtn:hover { filter: brightness(1.08); }
   .tcell { width: 78px; min-width: 78px; padding: 5px 6px; font-size: 12px; text-align: right; }
   #ftTable td:first-child, #ftTable th:first-child { text-align: left; }
+
+  /* ---- sortable ranking headers ---- */
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--accent); }
+  th .arr { font-size: 10px; color: var(--accent); }
+
+  /* ---- multi-select client dropdown ---- */
+  #clientList { max-height: none; padding: 0; }
+  .msbtn { background: var(--card2); color: var(--txt); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; font-size: 14px; min-width: 200px; text-align: left; cursor: pointer; }
+  .msbtn:hover { border-color: var(--accent); }
+  .msearch { width: 100%; min-width: 0; border: none; border-bottom: 1px solid var(--border); border-radius: 8px 8px 0 0; }
+  .msactions { display: flex; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .msopts { max-height: 220px; overflow: auto; }
+  .msopt { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .msopt:hover { background: rgba(56,189,248,.12); }
+  .msopt input { min-width: 0; width: auto; }
+  .dl-check { min-width: 0; width: auto; align-self: flex-start; margin: 2px 0 0; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -111,6 +128,8 @@
       <div class="field">
         <label>View</label>
         <div class="seg" id="depSeg"><button data-p="m" class="on">Monthly</button><button data-p="w">Weekly</button></div>
+        <label style="margin-top:8px;">Data labels</label>
+        <input type="checkbox" id="depLabels" class="dl-check" checked>
       </div>
       <div class="field">
         <label>Show</label>
@@ -140,7 +159,7 @@
       <div class="grid2">
         <div class="chart-box" style="height:480px"><canvas id="depRankChart"></canvas></div>
         <div class="table-scroll" style="max-height:480px">
-          <table><thead><tr><th>#</th><th>user_ID</th><th>Total deposits</th><th># Tx</th><th>Average</th><th>Periods</th></tr></thead>
+          <table><thead><tr><th>#</th><th>user_ID</th><th class="sortable" data-sort="tot">Total deposits <span class="arr"></span></th><th class="sortable" data-sort="tx"># Tx <span class="arr"></span></th><th class="sortable" data-sort="avg">Average <span class="arr"></span></th><th class="sortable" data-sort="periods">Periods <span class="arr"></span></th></tr></thead>
           <tbody class="ranktable" id="depRankTable"></tbody></table>
         </div>
       </div>
@@ -154,6 +173,8 @@
       <div class="field">
         <label>View</label>
         <div class="seg" id="wdSeg"><button data-p="m" class="on">Monthly</button><button data-p="w">Weekly</button></div>
+        <label style="margin-top:8px;">Data labels</label>
+        <input type="checkbox" id="wdLabels" class="dl-check" checked>
       </div>
       <div class="field">
         <label>Show</label>
@@ -183,7 +204,7 @@
       <div class="grid2">
         <div class="chart-box" style="height:480px"><canvas id="wdRankChart"></canvas></div>
         <div class="table-scroll" style="max-height:480px">
-          <table><thead><tr><th>#</th><th>user_ID</th><th>Total withdrawals</th><th># Tx</th><th>Average</th><th>Periods</th></tr></thead>
+          <table><thead><tr><th>#</th><th>user_ID</th><th class="sortable" data-sort="tot">Total withdrawals <span class="arr"></span></th><th class="sortable" data-sort="tx"># Tx <span class="arr"></span></th><th class="sortable" data-sort="avg">Average <span class="arr"></span></th><th class="sortable" data-sort="periods">Periods <span class="arr"></span></th></tr></thead>
           <tbody class="ranktable" id="wdRankTable"></tbody></table>
         </div>
       </div>
@@ -197,8 +218,12 @@
       <div class="field" style="min-width:260px;">
         <label>Client (user_ID)</label>
         <div class="combo" id="clientCombo">
-          <input id="clientInput" type="text" placeholder="All clients" autocomplete="off">
-          <div class="combo-list" id="clientList"></div>
+          <button type="button" id="clientToggle" class="msbtn">All clients</button>
+          <div class="combo-list" id="clientList">
+            <input id="clientSearch" type="text" class="msearch" placeholder="Search user_ID..." autocomplete="off">
+            <div class="msactions"><button type="button" class="linkbtn" id="clientSelAll">Select all</button><button type="button" class="linkbtn" id="clientClr">Clear</button></div>
+            <div id="clientOpts" class="msopts"></div>
+          </div>
         </div>
       </div>
       <div class="field">
@@ -351,8 +376,8 @@ function rebuildChips(containerId, state, onChange){
 //  RANKING TABS (deposits + withdrawals share this code)
 // ============================================================
 const RSTATE = {
-  dep: { data: DATA.dep, ptype: 'm', sel: new Set(DATA.monthsOrder), chart: null, word: 'deposits' },
-  wd:  { data: DATA.wd,  ptype: 'm', sel: new Set(DATA.monthsOrder), chart: null, word: 'withdrawals' }
+  dep: { data: DATA.dep, ptype: 'm', sel: new Set(DATA.monthsOrder), chart: null, word: 'deposits', sortKey: null, sortDir: 'desc', showLabels: true, defaultDir: 'desc' },
+  wd:  { data: DATA.wd,  ptype: 'm', sel: new Set(DATA.monthsOrder), chart: null, word: 'withdrawals', sortKey: null, sortDir: 'desc', showLabels: true, defaultDir: 'asc' }
 };
 
 function computeRanking(dataset, ptype, sel){
@@ -393,36 +418,82 @@ function renderRanking(kind){
   document.getElementById(kind + 'RkAvg').textContent = nf2.format(tx ? tot / tx : 0);
   document.getElementById(kind + 'RkClients').textContent = nf0.format(rows.length);
 
+  const baseDir = st.defaultDir || 'desc';
+  const base = rows.slice().sort((a, b) => baseDir === 'asc' ? a.tot - b.tot : b.tot - a.tot);
+
   const topN = +document.getElementById(kind + 'TopN').value;
-  const tableRows = rows.slice(0, topN);
-  const chartRows = rows.slice(0, Math.min(topN, 25));
+  // take the Top-N by total first, then reorder only those clients by the selected column.
+  const key = st.sortKey || 'tot';
+  const dir = st.sortKey ? st.sortDir : baseDir;
+  const disp = base.slice(0, topN).sort((a, b) => dir === 'asc' ? a[key] - b[key] : b[key] - a[key]);
+
+  const tableRows = disp;
+  const chartRows = disp.slice(0, 25);
+
+  const isMoney = (key === 'tot' || key === 'avg');
+  const metricLabel = { tot: 'Total (EUR)', tx: '# Transactions', avg: 'Average (EUR)', periods: 'Periods' }[key];
+  const fmtVal = (v) => isMoney ? nf2.format(v) + ' EUR' : nf0.format(v);
+
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = '600 11px "Segoe UI", system-ui, sans-serif';
+  let maxLblW = 0;
+  chartRows.forEach(r => { const w = measure.measureText(fmtVal(r[key])).width; if (w > maxLblW) maxLblW = w; });
+  const rightPad = st.showLabels ? (Math.ceil(maxLblW) + 14) : 8;
+
+  const barLabels = {
+    id: 'barLabels',
+    afterDatasetsDraw(chart){
+      if (!st.showLabels) return;
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.font = '600 11px "Segoe UI", system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#e2e8f0';
+      chart.getDatasetMeta(0).data.forEach((bar, i) => {
+        ctx.fillText(fmtVal(chart.data.datasets[0].data[i]), bar.x + 6, bar.y);
+      });
+      ctx.restore();
+    }
+  };
 
   if (st.chart) st.chart.destroy();
   st.chart = new Chart(document.getElementById(kind + 'RankChart'), {
     type: 'bar',
-    data: { labels: chartRows.map(r => r.user), datasets: [{ label: 'Total (EUR)', data: chartRows.map(r => r.tot), backgroundColor: 'rgba(56,189,248,.7)', borderColor: '#38bdf8' }] },
+    data: { labels: chartRows.map(r => r.user), datasets: [{ label: metricLabel, data: chartRows.map(r => r[key]), backgroundColor: 'rgba(56,189,248,.7)', borderColor: '#38bdf8' }] },
     options: {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: rightPad } },
       onClick: (e, els) => { if (els.length) openClient(chartRows[els[0].index].user); },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ' ' + nf2.format(c.parsed.x) + ' EUR' } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ' ' + fmtVal(c.parsed.x) } } },
       scales: { x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1f2b3e' } }, y: { ticks: { color: '#e2e8f0' }, grid: { display: false } } }
-    }
+    },
+    plugins: [barLabels]
   });
 
   const medals = { 1: '\uD83E\uDD47', 2: '\uD83E\uDD48', 3: '\uD83E\uDD49' };
   const tb = document.getElementById(kind + 'RankTable');
   tb.innerHTML = '';
-  tableRows.forEach(r => {
+  tableRows.forEach((r, i) => {
+    const pos = i + 1;
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td class="medal">' + (medals[r.rank] || r.rank) + '</td>' +
+    tr.innerHTML = '<td class="medal">' + (medals[pos] || pos) + '</td>' +
       '<td>' + r.user + '</td><td>' + nf2.format(r.tot) + '</td><td>' + nf0.format(r.tx) +
       '</td><td>' + nf2.format(r.avg) + '</td><td>' + r.periods + '</td>';
     attachRowNav(tr, r.user);
     tb.appendChild(tr);
   });
 
+  const table = tb.closest('table');
+  table.querySelectorAll('th.sortable').forEach(th => {
+    const arr = th.querySelector('.arr');
+    if (!arr) return;
+    arr.textContent = (st.sortKey === th.dataset.sort) ? (st.sortDir === 'asc' ? '\u25B2' : '\u25BC') : '';
+  });
+
   document.getElementById(kind + 'RankTitle').textContent =
-    'Ranking by total ' + st.word + ' (EUR) \u00b7 ' + (st.ptype === 'm' ? 'monthly' : 'weekly') + ' view';
+    'Ranking by total ' + st.word + ' (EUR) \u00b7 ' + (st.ptype === 'm' ? 'monthly' : 'weekly') + ' view' +
+    (st.sortKey ? (' \u00b7 sorted by ' + metricLabel + ' ' + (st.sortDir === 'asc' ? '\u25B2' : '\u25BC')) : '');
 }
 
 function wireRanking(kind){
@@ -436,20 +507,44 @@ function wireRanking(kind){
     renderRanking(kind);
   }));
   document.getElementById(kind + 'TopN').addEventListener('change', () => renderRanking(kind));
+  document.getElementById(kind + 'Labels').addEventListener('change', (e) => { st.showLabels = e.target.checked; renderRanking(kind); });
   document.getElementById(kind + 'All').addEventListener('click', () => { st.sel = new Set(periodsFor(st.ptype)); rebuildChips(kind + 'Chips', st, () => renderRanking(kind)); renderRanking(kind); });
   document.getElementById(kind + 'None').addEventListener('click', () => { st.sel = new Set(); rebuildChips(kind + 'Chips', st, () => renderRanking(kind)); renderRanking(kind); });
   rebuildChips(kind + 'Chips', st, () => renderRanking(kind));
+
+  const table = document.getElementById(kind + 'RankTable').closest('table');
+  table.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    const countCol = (key === 'tx' || key === 'periods');   // counts always sort high-to-low first
+    const first = countCol ? 'desc' : (st.defaultDir || 'desc');
+    const second = first === 'desc' ? 'asc' : 'desc';
+    if (st.sortKey !== key){ st.sortKey = key; st.sortDir = first; }
+    else if (st.sortDir === first){ st.sortDir = second; }
+    else { st.sortKey = null; st.sortDir = first; }   // third click: back to default order
+    renderRanking(kind);
+  }));
 }
 
 // ============================================================
 //  CLIENT KPIs
 // ============================================================
-const clientState = { ptype: 'm', sel: new Set(DATA.monthsOrder), user: 'all' };
+const clientState = { ptype: 'm', sel: new Set(DATA.monthsOrder), selUsers: new Set() };
 let ckComboChart, ckTotalChart;
 
-function seriesFor(user, ptype, sel){
+function aggUsers(userList, ptype){
+  if (!userList || !userList.length) return aggAll(ptype);
+  const out = {};
+  userList.forEach(u => {
+    const src = DATA.dep[u] && DATA.dep[u][ptype];
+    if (!src) return;
+    for (const p in src){ const b = out[p] || (out[p] = [0, 0]); b[0] += src[p][0]; b[1] += src[p][1]; }
+  });
+  return out;
+}
+
+function seriesForUsers(userList, ptype, sel){
   const order = periodsFor(ptype);
-  const src = user === 'all' ? aggAll(ptype) : ((DATA.dep[user] && DATA.dep[user][ptype]) || {});
+  const src = aggUsers(userList, ptype);
   const labels = order.filter(p => src[p] && sel.has(p));
   return {
     labels,
@@ -506,15 +601,17 @@ function fillClientTable(s, periodLabel, target){
 }
 
 function depositTargetSeries(labels){
-  // list-total deposit target: only in Client KPIs, 'All clients' + monthly view, while filter active.
-  if (!filterState.active || clientState.user !== 'all' || clientState.ptype !== 'm') return null;
+  // list-total deposit target: only in Client KPIs, whole-list view (no specific client), monthly, filter active.
+  if (!filterState.active || clientState.selUsers.size !== 0 || clientState.ptype !== 'm') return null;
   const arr = labels.map(p => { const o = filterState.tOver.m[p]; return (o && o[6] != null && o[6] !== '') ? +o[6] : null; });
   return arr.some(v => v != null) ? arr : null;
 }
 
 function renderClient(){
-  const { ptype, sel, user } = clientState;
-  const s = seriesFor(user, ptype, sel);
+  const { ptype, sel, selUsers } = clientState;
+  let userList = Array.from(selUsers);
+  if (filterState.active){ const fset = activeUserSet(); userList = userList.filter(u => fset.has(u)); }
+  const s = seriesForUsers(userList, ptype, sel);
   const dt = depositTargetSeries(s.labels);
   const totalTx = s.counts.reduce((a, b) => a + b, 0);
   const totalDep = s.totals.reduce((a, b) => a + b, 0);
@@ -523,9 +620,9 @@ function renderClient(){
   document.getElementById('ckAvg').textContent = nf2.format(totalTx ? totalDep / totalTx : 0);
 
   let rankTxt = '-';
-  if (user !== 'all'){
+  if (userList.length === 1){
     const rk = computeRanking(DATA.dep, ptype, sel);
-    const f = rk.find(r => r.user === user);
+    const f = rk.find(r => r.user === userList[0]);
     rankTxt = f ? ('#' + f.rank + ' / ' + rk.length) : 'no data';
   }
   document.getElementById('ckRank').textContent = rankTxt;
@@ -536,48 +633,55 @@ function renderClient(){
   document.getElementById('ckTitle').textContent = (ptype === 'm' ? 'Monthly' : 'Weekly') + ' evolution';
 }
 
-// ---- searchable combobox ----
-const clientInput = document.getElementById('clientInput');
+// ---- multi-select client checkboxes ----
+const clientToggle = document.getElementById('clientToggle');
 const clientList = document.getElementById('clientList');
-function optLabel(u){ return u === 'all' ? 'All clients' : u; }
+const clientSearch = document.getElementById('clientSearch');
+const clientOpts = document.getElementById('clientOpts');
 
-function openClientList(filter){
-  const f = (filter || '').trim().toLowerCase();
+function clientUniverse(){
   const flt = activeUserSet();
-  const universe = flt ? ['all'].concat(DATA.users.filter(u => u !== 'all' && flt.has(u))) : DATA.users;
-  const matches = universe.filter(u => u === 'all' ? 'all clients'.includes(f) : u.toLowerCase().includes(f));
-  clientList.innerHTML = '';
-  if (!matches.length){ clientList.innerHTML = '<div class="combo-empty">No matches</div>'; }
-  matches.slice(0, 200).forEach((u, i) => {
-    const d = document.createElement('div');
-    d.className = 'combo-opt' + (i === 0 ? ' active' : '');
-    d.textContent = optLabel(u);
-    d.dataset.value = u;
-    d.addEventListener('mousedown', (e) => { e.preventDefault(); selectClient(u); });
-    clientList.appendChild(d);
-  });
-  clientList.classList.add('open');
+  return DATA.users.filter(u => u !== 'all' && (!flt || flt.has(u)));
 }
+
+function updateClientLabel(){
+  const n = clientState.selUsers.size;
+  clientToggle.textContent = n === 0 ? 'All clients' : (n === 1 ? Array.from(clientState.selUsers)[0] : (n + ' selected'));
+}
+
+function renderClientOpts(){
+  const f = (clientSearch.value || '').trim().toLowerCase();
+  const list = clientUniverse().filter(u => u.toLowerCase().includes(f));
+  clientOpts.innerHTML = '';
+  if (!list.length){ clientOpts.innerHTML = '<div class="combo-empty">No matches</div>'; return; }
+  list.slice(0, 500).forEach(u => {
+    const row = document.createElement('label');
+    row.className = 'msopt';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = u; cb.checked = clientState.selUsers.has(u);
+    cb.addEventListener('change', () => {
+      if (cb.checked) clientState.selUsers.add(u); else clientState.selUsers.delete(u);
+      updateClientLabel(); renderClient();
+    });
+    const span = document.createElement('span'); span.textContent = u;
+    row.appendChild(cb); row.appendChild(span);
+    clientOpts.appendChild(row);
+  });
+}
+
+function openClientList(){ renderClientOpts(); clientList.classList.add('open'); }
 function closeClientList(){ clientList.classList.remove('open'); }
 
-function selectClient(u){
-  clientState.user = u;
-  clientInput.value = u === 'all' ? '' : u;
-  closeClientList();
-  renderClient();
-}
-
-clientInput.addEventListener('focus', () => openClientList(clientInput.value));
-clientInput.addEventListener('input', () => openClientList(clientInput.value));
-clientInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter'){ const first = clientList.querySelector('.combo-opt'); if (first) selectClient(first.dataset.value); e.preventDefault(); }
-  else if (e.key === 'Escape'){ closeClientList(); }
-});
+clientToggle.addEventListener('click', () => { clientList.classList.contains('open') ? closeClientList() : openClientList(); });
+clientSearch.addEventListener('input', renderClientOpts);
+document.getElementById('clientSelAll').addEventListener('click', () => { clientUniverse().forEach(u => clientState.selUsers.add(u)); renderClientOpts(); updateClientLabel(); renderClient(); });
+document.getElementById('clientClr').addEventListener('click', () => { clientState.selUsers.clear(); renderClientOpts(); updateClientLabel(); renderClient(); });
 document.addEventListener('click', (e) => { if (!document.getElementById('clientCombo').contains(e.target)) closeClientList(); });
+updateClientLabel();
 
 function openClient(u){
-  clientState.user = u;
-  clientInput.value = u === 'all' ? '' : u;
+  clientState.selUsers = new Set([u]);
+  updateClientLabel();
   switchTab('client');
   renderClient();
   window.scrollTo({ top: 0, behavior: 'smooth' });
