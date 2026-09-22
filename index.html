@@ -453,7 +453,7 @@ function renderRanking(kind){
   const tableRows = disp;
   const chartRows = disp;
   const inner = document.getElementById(kind + 'RankInner');
-  if (inner) inner.style.height = Math.max(480, chartRows.length * 24) + 'px';   // fixed viewport, taller canvas scrolls
+  if (inner) inner.style.height = Math.max(480, chartRows.length * (480 / 25)) + 'px';   // 25 bars fill the 480px viewport; the rest scrolls
 
   const isMoney = (key === 'tot' || key === 'avg');
   const metricLabel = { tot: 'Total (EUR)', tx: '# Transactions', avg: 'Average (EUR)', periods: 'Periods' }[key];
